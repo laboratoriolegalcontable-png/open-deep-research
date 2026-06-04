@@ -1,23 +1,16 @@
 import { Redis } from '@upstash/redis';
 import { Ratelimit } from '@upstash/ratelimit';
 
-// Create a new Redis instance
-export const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL || '',
-  token: process.env.UPSTASH_REDIS_REST_TOKEN || '',
-  // Disable HTTPS check in development
-  automaticDeserialization: true,
-  agent: process.env.NODE_ENV === 'development' ? {
-    https: {
-      rejectUnauthorized: false
-    }
-  } : undefined,
-});
+const isUpstash = (process.env.UPSTASH_REDIS_REST_URL || '').startsWith('https://');
 
-// Create a new rate limiter that allows 5 requests per 60 seconds
-export const rateLimiter = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(5, '60 s'),
-  analytics: true,
-  prefix: '@upstash/ratelimit',
-});
+export const redis = isUpstash
+  ? new Redis({ url: process.env.UPSTASH_REDIS_REST_URL || '', token: process.env.UPSTASH_REDIS_REST_TOKEN || '', automaticDeserialization: true })
+  : null;
+
+const noopLimiter = {
+  limit: async (_identifier: string) => ({ success: true, limit: 999, reset: Date.now() + 60000, remaining: 999 }),
+};
+
+export const rateLimiter = isUpstash
+  ? new Ratelimit({ redis: redis as Redis, limiter: Ratelimit.slidingWindow(5, '60 s'), analytics: true, prefix: '@upstash/ratelimit' })
+  : noopLimiter;
